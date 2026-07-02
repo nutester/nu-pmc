@@ -36,9 +36,15 @@ async function getAssignedRoles(projectId, roleList) {
 //   - Deputy: caller is deputy_id of an assigned user whose role matches a required slot.
 //   - Otherwise: null (caller can't sign).
 async function determineSignoffSlot(callerUser, projectId, requiredRoles, bodyRole) {
-  if (bodyRole && requiredRoles.includes(bodyRole)) return bodyRole;
+  const isUniversal = UNIVERSAL_SIGNERS.includes(callerUser.role);
+  // SECURITY: only a universal signer (principal / design_principal) may sign a
+  // slot OTHER than their own by naming it in body.role. A non-universal caller
+  // cannot fill a slot they do not hold, even if they name it — otherwise any
+  // closure role could sign as any other role, and (combined with the caller
+  // being able to sign multiple times) a single person could complete closure.
+  if (isUniversal && bodyRole && requiredRoles.includes(bodyRole)) return bodyRole;
   if (requiredRoles.includes(callerUser.role)) return callerUser.role;
-  if (UNIVERSAL_SIGNERS.includes(callerUser.role)) {
+  if (isUniversal) {
     if (requiredRoles.includes('principal')) return 'principal';
     return null;
   }

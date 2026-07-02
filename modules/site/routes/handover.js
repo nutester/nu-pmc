@@ -166,8 +166,22 @@ router.post('/:project_id/closure/signoff',
     // pattern as snag-signoff. Both must succeed together or neither.
     let allSigned = false;
     let dupSlot = false;
+    let alreadyAnotherSlot = false;
 
     await db.tx(async (conn) => {
+      // SECURITY: one person cannot fill more than one closure slot. The quorum
+      // requires distinct signers, not distinct role labels from a single
+      // universal signer — otherwise one principal could sign all five slots and
+      // complete closure alone.
+      const [mine] = await conn.query(
+        `SELECT signed_for_role FROM handover_closure_signoffs
+          WHERE project_id = ? AND signed_by_user_id = ?`,
+        [projectId, me.id]
+      );
+      if (mine.some(r => r.signed_for_role !== slot)) {
+        alreadyAnotherSlot = true;
+        return;
+      }
       try {
         await conn.query(
           `INSERT INTO handover_closure_signoffs (project_id, signed_for_role, signed_by_user_id, notes)
@@ -200,6 +214,13 @@ router.post('/:project_id/closure/signoff',
         allSigned = true;
       }
     });
+
+    if (alreadyAnotherSlot) {
+      return res.status(409).json({
+        error: 'You have already signed a different closure slot; one person cannot fill multiple slots.',
+        code:  'ONE_SLOT_PER_USER',
+      });
+    }
 
     if (dupSlot) {
       return res.status(409).json({ error: `Slot '${slot}' already signed` });

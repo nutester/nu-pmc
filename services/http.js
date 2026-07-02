@@ -58,7 +58,9 @@ async function post(url, data, options = {}) {
     method:  'POST',
     headers,
     body,
-    signal: options.timeout ? AbortSignal.timeout(options.timeout) : undefined,
+    // Default 30s timeout so a black-holed Matrix/Twilio/ICICI send fails fast
+    // instead of hanging the request forever (and eventually exhausting the pool).
+    signal: AbortSignal.timeout(options.timeout || 30000),
   });
 
   if (!res.ok) {
@@ -110,7 +112,9 @@ async function put(url, data, options = {}) {
     method:  'PUT',
     headers,
     body,
-    signal: options.timeout ? AbortSignal.timeout(options.timeout) : undefined,
+    // Default 30s timeout so a black-holed Matrix send fails fast instead of
+    // hanging the request forever (and eventually exhausting the pool).
+    signal: AbortSignal.timeout(options.timeout || 30000),
   });
 
   if (!res.ok) {

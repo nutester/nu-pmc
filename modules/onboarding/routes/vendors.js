@@ -220,6 +220,13 @@ router.post('/master', requireAuth, requirePermission('admin.vendor.create'), as
         });
       } catch (e) {
         console.warn('[vendor.create V8 bank-approval]', e.message);
+        // If the dual-approval record could not be created, strip the bank
+        // details so the vendor never persists with UNAPPROVED bank details
+        // (the V8 control). They can be re-added later, which re-triggers approval.
+        await db.query(
+          'UPDATE vendors SET bank_account=NULL, bank_ifsc=NULL, bank_name=NULL WHERE id=?',
+          [result.insertId]
+        ).catch(() => {});
       }
     }
 

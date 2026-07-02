@@ -19,7 +19,7 @@ router.get('/:id/scope', requireAuth, asyncHandler(async (req, res) => {
   }));
 
 // PUT /api/project-setup/:id/scope — any of 5 setup roles can update their section
-router.put('/:id/scope', requireAuth,
+router.put('/:id/scope', requireAuth, requireProjectScope(req => req.params.id),
   requirePermission('onboarding.project-setup.edit-scope'),
   asyncHandler(async (req, res) => {
     const me = req.session.user;

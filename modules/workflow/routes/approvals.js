@@ -254,23 +254,23 @@ router.post('/:id/approve', requirePrincipal, asyncHandler(async (req, res) => {
       `SELECT label, drift_days FROM schedule_versions WHERE id = ?`,
       [approval.ref_id]
     );
-    await db.query(
-      `UPDATE schedule_versions SET is_current = 0 WHERE project_id = ? AND id != ?`,
-      [approval.project_id, approval.ref_id]
-    );
-    await db.query(
-      `UPDATE schedule_versions SET is_current = 1, approved_by = ?, approved_at = NOW() WHERE id = ?`,
-      [me.id, approval.ref_id]
-    );
-    await db.query(
-      `UPDATE project_checklists SET schedule_approved = 1 WHERE project_id = ?`,
-      [approval.project_id]
-    );
+    // Demote-all + promote-one + checklist flag must be atomic, else a failure
+    // between them leaves the project with NO current schedule version.
+    await db.tx(async (conn) => {
+      await conn.query(
+        `UPDATE schedule_versions SET is_current = 0 WHERE project_id = ? AND id != ?`,
+        [approval.project_id, approval.ref_id]
+      );
+      await conn.query(
+        `UPDATE schedule_versions SET is_current = 1, approved_by = ?, approved_at = NOW() WHERE id = ?`,
+        [me.id, approval.ref_id]
+      );
+      await conn.query(
+        `UPDATE project_checklists SET schedule_approved = 1 WHERE project_id = ?`,
+        [approval.project_id]
+      );
+    });
   }
-
-  await db.query(
-    `SELECT id FROM users WHERE role IN ('principal','design_principal') AND active = 1`
-  );
 
   res.json({ success: true });
 }));

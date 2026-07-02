@@ -418,8 +418,6 @@ router.get('/:project_id/:measurement_id/certificate', requireAuth, asyncHandler
 
   }));
 
-module.exports = router;
-
 // POST /api/measurements/:project_id/:measurement_id/signed-cert — upload signed cert after acceptance
 router.post('/:project_id/:measurement_id/signed-cert',
   requireAuth, requireProjectScope(), requireRole(...PMC_ROLES), upload.single('signed_certificate'),
@@ -441,3 +439,5 @@ router.post('/:project_id/:measurement_id/signed-cert',
       details: { project_id: parseInt(req.params.project_id) }, req });
     res.json({ success: true });
   }));
+
+module.exports = router;

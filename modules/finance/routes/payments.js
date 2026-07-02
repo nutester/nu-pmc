@@ -188,36 +188,43 @@ router.post('/:project_id/raise', requireAuth, requireProjectScope(), requirePMC
     const Onboarding = require('../../onboarding/contract');
     const insertEng = await Onboarding.functions.getVendorEngagement(body.engagement_id);
     if (!insertEng) return res.status(400).json({ error: 'Engagement not found' });
-    const [result] = await db.query(`
+    // Payment INSERT + advance-recovery deduction must be atomic. If the UPDATE
+    // failed after the INSERT, the payment would be recorded but the advance
+    // never debited — the same advance could then be recovered again next bill.
+    let paymentId;
+    await db.tx(async (conn) => {
+      const [result] = await conn.query(`
       INSERT INTO vendor_payments
         (project_id, vendor_id, engagement_id, payment_type, amount_requested,
          work_done_pct, recommended_amount, notes, raised_by, week_ending)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.params.project_id, insertEng.vendor_id, body.engagement_id, body.payment_type, validAmount,
-       validWorkPct, recommended, body.notes, req.session.user.id,
-       body.week_ending || dateUtil.todayIST()]
-    );
-
-    // Update advance recovery
-    if (advRec && autoDeduction > 0) {
-      const newTotal = parseFloat(advRec.total_recovered) + autoDeduction;
-      const fullyRecovered = newTotal >= parseFloat(advRec.advance_amount);
-      await db.query(
-        'UPDATE advance_recovery_schedule SET total_recovered=?, fully_recovered=? WHERE id=?',
-        [newTotal, fullyRecovered?1:0, advRec.id]
+        [req.params.project_id, insertEng.vendor_id, body.engagement_id, body.payment_type, validAmount,
+         validWorkPct, recommended, body.notes, req.session.user.id,
+         body.week_ending || dateUtil.todayIST()]
       );
-    }
+      paymentId = result.insertId;
+
+      // Update advance recovery
+      if (advRec && autoDeduction > 0) {
+        const newTotal = parseFloat(advRec.total_recovered) + autoDeduction;
+        const fullyRecovered = newTotal >= parseFloat(advRec.advance_amount);
+        await conn.query(
+          'UPDATE advance_recovery_schedule SET total_recovered=?, fully_recovered=? WHERE id=?',
+          [newTotal, fullyRecovered?1:0, advRec.id]
+        );
+      }
+    });
 
     res.json({
       success:          true,
-      payment_id:       result.insertId,
+      payment_id:       paymentId,
       recommended:      recommended,
       auto_deduction:   autoDeduction,
       anomaly_note:     anomalyNote,
       message:          'Payment raised — pending PMC Head approval before ICICI upload.',
     });
     audit.log({ userId: req.session.user.id, action: 'vendor_payment.raise',
-      entityType: 'vendor_payments', entityId: result.insertId,
+      entityType: 'vendor_payments', entityId: paymentId,
       details: { project_id: parseInt(req.params.project_id, 10), engagement_id: body.engagement_id, vendor_id: insertEng.vendor_id, payment_type: body.payment_type, amount_requested: validAmount, recommended, auto_deduction: autoDeduction, work_done_pct: validWorkPct, has_boq: hasBoq }, req });
   }));
 
