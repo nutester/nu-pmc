@@ -14,7 +14,7 @@
  * (loads .env for DB connection, same as the app)
  */
 require('dotenv').config();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const pool = require('../middleware/db');
 
 const DEFAULT = 'Start@123';
